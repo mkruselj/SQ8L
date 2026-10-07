@@ -23,6 +23,8 @@ jobs:
         run: |
           /usr/sbin/softwareupdate --install-rosetta --agree-to-license || true
           arch -x86_64 ./build/sq8l_render_check --regression tests/regression
+      - name: Editor additions of the port
+        run: SQ8L_TESTAPI=$PWD/build/libsq8l_testapi.dylib python3 tests/test_gui_extensions.py
       # Code signing and notarization (Developer ID) go here once certificates are set up
       # as repository secrets; until then package.sh signs the bundles ad hoc.
       - name: Package

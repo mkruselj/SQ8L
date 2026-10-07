@@ -36,6 +36,10 @@ code and verified against the original plugin running inside an x86 emulator.
 
 - Popup menus, message boxes, file pickers and the WRITE / MIDI-port dialogs use the
   operating system's native controls: on macOS they look like macOS.
+- A few small additions to the editor: a left click on the program number opens the program
+  list (the original needs a right or double click), and two items at the bottom of OPTIONS:
+  *Down arrow -> next program* (the original's hidden `swapProgUpDn` setting) and
+  *Ask before loading banks/libraries* (on by default, like the original).
 - Text (status bar, program name) uses Liberation Sans, a free font metrically compatible
   with Arial, with anti-aliasing.
 - SEND/REQ to a hardware SQ-80/ESQ-1 over MIDI ports are not connected yet (SysEx import and
