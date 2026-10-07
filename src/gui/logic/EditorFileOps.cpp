@@ -76,7 +76,9 @@ void EditorController::loadLibrary() {  // menu_loadLibClick
     if (!fileDialog(rq, path)) return;
     std::vector<uint8_t> data;
     if (!ui_.readFile(path, data) || data.empty()) return;
-    if (ui_.messageBox("Load library? (This will erase all programs!)", "Warning", kMbOkCancel) != kIdOk) return;
+    if (host_.settings().confirmLoading() &&
+        ui_.messageBox("Load library? (This will erase all programs!)", "Warning", kMbOkCancel) != kIdOk)
+        return;
     if (host_.library().loadLibrary(data.data(), data.size()))
         showMessage("** Library loaded **");  // (FUN_004843c8: empty)
     else
@@ -121,7 +123,7 @@ void EditorController::loadBank() {  // menu_loadBankClick
     if (!ui_.readFile(path, data) || data.empty()) return;
     const std::string msg = std::string("Load bank? (This will erase all programs in bank ") +
                             char(bank() >= 0 && bank() < 4 ? 'A' + bank() : '?') + " !)";
-    if (ui_.messageBox(msg, "Warning", kMbOkCancel) != kIdOk) return;
+    if (host_.settings().confirmLoading() && ui_.messageBox(msg, "Warning", kMbOkCancel) != kIdOk) return;
     if (host_.library().loadBank(data.data(), data.size(), bank()))
         showMessage("** Bank loaded **");
     else
@@ -179,7 +181,7 @@ void EditorController::importBank() {  // menu_impBankClick
     if (last >= 0x80) last = 0x7f;
     const std::string msg =
         "Overwrite programs " + delphi::intToStrZ(p, 3) + "..." + delphi::intToStrZ(last, 3) + "?";
-    if (ui_.messageBox(msg, "Warning", kMbOkCancel) != kIdOk) return;
+    if (host_.settings().confirmLoading() && ui_.messageBox(msg, "Warning", kMbOkCancel) != kIdOk) return;
     bool ok = false;
     const int idx = host_.editBuffer().libraryIndex(p, b);
     if (host_.library().importSysexBank(data.data(), data.size(), idx, true)) {

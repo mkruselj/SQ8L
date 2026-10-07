@@ -93,6 +93,12 @@ struct TestHost : EditorHost {
     void setSynthSetting(int i, int v) override {
         if (cfg.setSynth(i, v) && ctl) ctl->post(kMsgNotify, 0, 0x10 + i);
     }
+    // The differential tests compare with the original: port additions off unless asked.
+    bool extensions = false;
+    bool portExtensions() override { return extensions; }
+    void setPortSetting(int i, int v) override {
+        if (cfg.setPort(i, v) && ctl) ctl->post(kMsgNotify, 0, 0x20 + i);
+    }
     void panic() override { log << "panic\n"; }
     int voicesUsed() override { return usedVoices; }
     int voicesMax() override { return maxVoices; }
@@ -242,7 +248,8 @@ struct Box {
     std::unique_ptr<EditorController> ctl;
     bool autoContextMenu = false;
 
-    explicit Box(int first) {
+    explicit Box(int first, bool extensions = false) {
+        host.extensions = extensions;
         ctl = std::make_unique<EditorController>(view, host, ui, first != 0);
         host.ctl = ctl.get();
         ui.pumpDuringModal = [this] { ctl->pump(); };
@@ -281,6 +288,11 @@ std::string lcdJson(const LcdDisplay& l) {
 // ------------------------------------------------------------------ lifecycle
 
 SQ8L_API void* sq8l_gl_new(int first) { return new Box(first); }
+// With the port's additions (EditorHost::portExtensions), for tests/test_gui_extensions.py.
+SQ8L_API void* sq8l_gl_new_ext(int first) { return new Box(first, true); }
+SQ8L_API int32_t sq8l_gl_port_setting(void* v, int32_t i) {
+    return i >= 0 && i < Settings::kNumPort ? B(v)->host.cfg.port[i] : -1;
+}
 SQ8L_API void sq8l_gl_free(void* v) { delete B(v); }
 
 // engine state (before show): library image (512 x 540 bytes), header (0x3c), clean flag;

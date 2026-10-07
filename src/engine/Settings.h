@@ -33,6 +33,14 @@ struct Settings {
     int gui[kNumGui] = {1, 1, 1, 1, 0, 1};
     int synth[kNumSynth] = {2, 0, 0, 0, 0};
 
+    // [port]: options added by the port (not in the original, which ignores the section).
+    static constexpr int kNumPort = 1;
+    static constexpr const char* kPortKeys[kNumPort] = {"confirmLoad"};
+    static constexpr int kPortDefaults[kNumPort] = {1};
+    int port[kNumPort] = {1};
+    // Ask before loading a library, a bank or a SysEx bank over existing programs.
+    bool confirmLoading() const { return port[0] > 0; }
+
     // [gui] (only the editor uses these). getGuiBool = value > 0.
     bool restoreMouseAfterMenu() const { return gui[0] > 0; }
     bool restoreMouseAfterKnob() const { return gui[1] > 0; }
@@ -83,12 +91,18 @@ struct Settings {
         synth[i] = v;
         return true;
     }
+    bool setPort(int i, int v) {
+        if (i < 0 || i >= kNumPort || port[i] == v) return false;
+        port[i] = v;
+        return true;
+    }
 
     // Parse INI text ([gui] and [synth] sections; keys and sections are case insensitive;
     // missing/invalid values keep the defaults, like ReadInteger/StrToIntDef).
     void loadIni(std::string_view text) {
         for (int i = 0; i < kNumGui; i++) gui[i] = kGuiDefaults[i];
         for (int i = 0; i < kNumSynth; i++) synth[i] = kSynthDefaults[i];
+        for (int i = 0; i < kNumPort; i++) port[i] = kPortDefaults[i];
         std::string section;
         size_t pos = 0;
         while (pos < text.size()) {
@@ -112,11 +126,14 @@ struct Settings {
             } else if (section == "synth") {
                 for (int i = 0; i < kNumSynth; i++)
                     if (key == lower(kSynthKeys[i])) synth[i] = strToIntDef(val, kSynthDefaults[i]);
+            } else if (section == "port") {
+                for (int i = 0; i < kNumPort; i++)
+                    if (key == lower(kPortKeys[i])) port[i] = strToIntDef(val, kPortDefaults[i]);
             }
         }
     }
 
-    // INI text as written by the original (TIniFile.WriteInteger for every key).
+    // INI text as written by the original (TIniFile.WriteInteger for every key), plus [port].
     std::string saveIni() const {
         std::string s = "[gui]\r\n";
         for (int i = 0; i < kNumGui; i++)
@@ -124,6 +141,9 @@ struct Settings {
         s += "[synth]\r\n";
         for (int i = 0; i < kNumSynth; i++)
             s += std::string(kSynthKeys[i]) + "=" + std::to_string(synth[i]) + "\r\n";
+        s += "[port]\r\n";
+        for (int i = 0; i < kNumPort; i++)
+            s += std::string(kPortKeys[i]) + "=" + std::to_string(port[i]) + "\r\n";
         return s;
     }
 

@@ -195,6 +195,8 @@ private:
     void restMouseMenuClick(MenuNode& item);
     void restMouseKnobClick(MenuNode& item);
     void rmbScrDispClick(MenuNode& item);
+    void swapProgUpDnClick(MenuNode& item);  // port addition
+    void confirmLoadClick(MenuNode& item);   // port addition
     void showModInfo();         // FUN_0047c9c0
     void showAbout();           // 0x47d260
     // dialogs
@@ -231,6 +233,8 @@ private:
     MenuNode* menuRestMouseMenu_ = nullptr;
     MenuNode* menuRestMouseKnob_ = nullptr;
     MenuNode* menuRmbScrDisp_ = nullptr;
+    MenuNode* menuSwapProgUpDn_ = nullptr;  // port addition (nullptr without portExtensions)
+    MenuNode* menuConfirmLoad_ = nullptr;   // port addition
     MenuNode* menuSynth_[5][4] = {};  // [setting][0 prog, 1.., ..] radio items
     // the popup menu shown last: command id -> item
     std::vector<MenuNode*> commands_;

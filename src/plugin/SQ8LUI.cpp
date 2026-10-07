@@ -80,6 +80,12 @@ public:
         if (controller_) controller_->post(sq8l::gui::kMsgNotify, 0, 0x10 + index);
     }
 
+    void setPortSetting(int index, int value) override {
+        if (!p_.settings().setPort(index, value)) return;
+        sq8l::SharedLibrary::saveSettings();
+        if (controller_) controller_->post(sq8l::gui::kMsgNotify, 0, 0x20 + index);
+    }
+
     void panic() override { p_.synth().master().panic(); }
     int voicesUsed() override { return p_.synth().master().activeVoiceCount(); }
     int voicesMax() override { return 8; }

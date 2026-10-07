@@ -167,6 +167,12 @@ void EditorController::buildMenus() {
     rest.items.push_back(item("Knob turning", 0, [this](MenuNode& n) { restMouseKnobClick(n); }));
     o.push_back(rest);
     o.push_back(item("Right click on display -> scroll page", 0, [this](MenuNode& n) { rmbScrDispClick(n); }));
+    if (host_.portExtensions()) {
+        // Port additions: the original's hidden swapProgUpDn ini key, and the load prompts.
+        o.push_back(line());
+        o.push_back(item("Down arrow -> next program", 0, [this](MenuNode& n) { swapProgUpDnClick(n); }));
+        o.push_back(item("Ask before loading banks/libraries", 0, [this](MenuNode& n) { confirmLoadClick(n); }));
+    }
 
     // parents (for radio items) and the items the form references
     std::function<void(MenuNode&)> link = [&](MenuNode& n) {
@@ -198,6 +204,10 @@ void EditorController::buildMenus() {
     menuRestMouseMenu_ = &optionsMenu_.items[3].items[0];
     menuRestMouseKnob_ = &optionsMenu_.items[3].items[1];
     menuRmbScrDisp_ = &optionsMenu_.items[4];
+    if (host_.portExtensions()) {
+        menuSwapProgUpDn_ = &optionsMenu_.items[6];
+        menuConfirmLoad_ = &optionsMenu_.items[7];
+    }
     pageMenu_.autoHotkeys = false;     // menuPagePopup: AutoHotkeys = maManual
     programMenu_.autoHotkeys = false;  // FUN_0043bb14
 }
@@ -293,7 +303,8 @@ void EditorController::wireControls() {
     auto hint = [this](Control& c, ShiftState, int, int) { mouseMoveHint(c); };
     LcdDisplay& num = view_.numLcd();
     num.onMouseDown = [this](Control&, MouseButton b, ShiftState, int, int) {  // numLcdMouseDown
-        if (b == MouseButton::Right) programDblClick();
+        // Port addition: the left button opens the program list too (the original: right only).
+        if (b == MouseButton::Right || (b == MouseButton::Left && host_.portExtensions())) programDblClick();
     };
     num.onMouseMove = hint;
     num.onDblClick = [this](Control&) { programDblClick(); };
@@ -451,6 +462,8 @@ void EditorController::settingsChanged() {  // FUN_00483b08
     }
     keyCaptMode_ = s.keyCaptureMode();
     swapProgUpDn_ = s.swapProgramUpDown();
+    if (menuSwapProgUpDn_) menuSwapProgUpDn_->setChecked(swapProgUpDn_);
+    if (menuConfirmLoad_) menuConfirmLoad_->setChecked(s.confirmLoading());
     b = s.rightClickScrollsDisplay();
     if (b != rmbScroll_) {
         rmbScroll_ = b;
@@ -945,6 +958,19 @@ void EditorController::rmbScrDispClick(MenuNode& item) {  // menu_rmbScrDispClic
     item.setChecked(!item.checked);
     host_.setGuiSetting(5, item.checked);
     rmbScroll_ = host_.settings().rightClickScrollsDisplay();
+}
+
+// Port addition: the original's swapProgUpDn ini key (readme E.7), now also in OPTIONS.
+void EditorController::swapProgUpDnClick(MenuNode& item) {
+    item.setChecked(!item.checked);
+    host_.setGuiSetting(4, item.checked);
+    swapProgUpDn_ = host_.settings().swapProgramUpDown();
+}
+
+// Port addition: ask before loading a library, a bank or a SysEx bank ([port] confirmLoad).
+void EditorController::confirmLoadClick(MenuNode& item) {
+    item.setChecked(!item.checked);
+    host_.setPortSetting(0, item.checked ? 1 : 0);
 }
 
 void EditorController::showModInfo() {  // FUN_0047c9c0
