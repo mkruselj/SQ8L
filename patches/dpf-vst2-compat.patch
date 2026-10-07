@@ -1,0 +1,103 @@
+diff --git a/distrho/src/DistrhoPluginVST2.cpp b/distrho/src/DistrhoPluginVST2.cpp
+index 4f3c4b5..1a9e090 100644
+--- a/distrho/src/DistrhoPluginVST2.cpp
++++ b/distrho/src/DistrhoPluginVST2.cpp
+@@ -467,6 +467,33 @@ public:
+         intptr_t ret = 0;
+        #endif
+ 
++       #ifdef DISTRHO_PLUGIN_VST2_PROGRAM_HOOKS
++        // Program handling delegated to the plugin (see DistrhoPluginInfo.h).
++        if (Vst2ProgramHooks* const hooks = dynamic_cast<Vst2ProgramHooks*>(static_cast<Plugin*>(fPlugin.getInstancePointer())))
++        {
++            switch (opcode)
++            {
++            case VST_EFFECT_OPCODE_02: // set program
++                hooks->vst2SetProgram(static_cast<int32_t>(value));
++                return 0;
++            case VST_EFFECT_OPCODE_03: // get program
++                return hooks->vst2GetProgram();
++            case VST_EFFECT_OPCODE_04: // set program name
++                if (ptr != nullptr)
++                    hooks->vst2SetProgramName(static_cast<const char*>(ptr));
++                return 0;
++            case VST_EFFECT_OPCODE_05: // get program name
++                if (ptr != nullptr)
++                    hooks->vst2GetProgramName(static_cast<char*>(ptr));
++                return 0;
++            case VST_EFFECT_OPCODE_1D: // get program name indexed
++                return ptr != nullptr && hooks->vst2GetProgramNameIndexed(index, static_cast<char*>(ptr)) ? 1 : 0;
++            default:
++                break;
++            }
++        }
++       #endif
++
+         switch (opcode)
+         {
+         case VST_EFFECT_OPCODE_03: // get program
+@@ -695,6 +722,23 @@ public:
+ 
+             const uint32_t paramCount = fPlugin.getParameterCount();
+ 
++           #ifdef DISTRHO_PLUGIN_VST2_RAW_CHUNK_KEY
++            // Binary-compatible chunk: the state value is the hex encoding of the raw chunk bytes.
++            {
++                const String hex(fPlugin.getStateValue(DISTRHO_PLUGIN_VST2_RAW_CHUNK_KEY));
++                const std::size_t n = hex.length() / 2;
++                fStateChunk = new char[n > 0 ? n : 1];
++                fStateChunk[0] = '\0';
++                for (std::size_t i = 0; i < n; ++i)
++                {
++                    const auto nib = [](char c) -> int { return c <= '9' ? c - '0' : (c | 0x20) - 'a' + 10; };
++                    fStateChunk[i] = static_cast<char>((nib(hex[2*i]) << 4) | nib(hex[2*i+1]));
++                }
++                *(void**)ptr = fStateChunk;
++                return static_cast<intptr_t>(n);
++            }
++           #endif
++
+             if (fPlugin.getStateCount() == 0 && paramCount == 0)
+             {
+                 fStateChunk    = new char[1];
+@@ -774,6 +818,28 @@ public:
+             if (value <= 1 || ptr == nullptr)
+                 return 0;
+ 
++           #ifdef DISTRHO_PLUGIN_VST2_RAW_CHUNK_KEY
++            {
++                static const char digits[] = "0123456789abcdef";
++                const std::size_t n = static_cast<std::size_t>(value);
++                const uint8_t* raw = static_cast<const uint8_t*>(ptr);
++                char* hex = new char[2 * n + 1];
++                for (std::size_t i = 0; i < n; ++i)
++                {
++                    hex[2*i]     = digits[raw[i] >> 4];
++                    hex[2*i + 1] = digits[raw[i] & 15];
++                }
++                hex[2 * n] = '\0';
++                setStateFromUI(DISTRHO_PLUGIN_VST2_RAW_CHUNK_KEY, hex);
++               #if DISTRHO_PLUGIN_HAS_UI
++                if (fVstUI != nullptr)
++                    fVstUI->setStateFromPlugin(DISTRHO_PLUGIN_VST2_RAW_CHUNK_KEY, hex);
++               #endif
++                delete[] hex;
++                return 0;
++            }
++           #endif
++
+             const size_t chunkSize = static_cast<size_t>(value);
+ 
+             const char* key   = (const char*)ptr;
+@@ -1676,7 +1742,11 @@ const vst_effect* VSTPluginMain(const vst_host_callback audioMaster)
+ 
+     // plugin fields
+     effect->num_params   = numParams;
++   #ifdef DISTRHO_PLUGIN_VST2_NUM_PROGRAMS
++    effect->num_programs = DISTRHO_PLUGIN_VST2_NUM_PROGRAMS;
++   #else
+     effect->num_programs = 1;
++   #endif
+     effect->num_inputs   = DISTRHO_PLUGIN_NUM_INPUTS;
+     effect->num_outputs  = DISTRHO_PLUGIN_NUM_OUTPUTS;
+ 

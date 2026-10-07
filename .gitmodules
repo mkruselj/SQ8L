@@ -1,0 +1,4 @@
+[submodule "third_party/DPF"]
+	path = third_party/DPF
+	url = https://github.com/DISTRHO/DPF.git
+	ignore = dirty

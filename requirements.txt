@@ -1,0 +1,6 @@
+# Tools and differential tests (need the original SQ8L.dll, see README).
+pefile
+capstone
+unicorn>=2.1
+numpy
+pillow
