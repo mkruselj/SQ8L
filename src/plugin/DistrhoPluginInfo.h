@@ -15,6 +15,10 @@
 #define DISTRHO_UI_DEFAULT_HEIGHT 430
 #define DISTRHO_UI_USER_RESIZABLE 0
 #define DISTRHO_UI_USE_NANOVG 0
+// Linux: the editor's file dialogs come from DPF's file browser (elsewhere: native ones).
+#if defined(__linux__)
+#define DISTRHO_UI_FILE_BROWSER 1
+#endif
 #define DISTRHO_PLUGIN_IS_RT_SAFE 1
 #define DISTRHO_PLUGIN_IS_SYNTH 1
 #define DISTRHO_PLUGIN_NUM_INPUTS 0

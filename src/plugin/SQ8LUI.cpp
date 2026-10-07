@@ -4,13 +4,17 @@
 // software rendered into a 626x430 RGB frame — exactly the original's pixels — shown as
 // one OpenGL texture with nearest-neighbour scaling. Mouse input is translated to the
 // Win32-style events the ported controls expect; a 20 ms tick stands in for the
-// original's CsimpleTimer. Native menus, dialogs and file pickers come from PlatformUi.
+// original's CsimpleTimer. Menus, dialogs and file pickers come from PlatformUi: native
+// on macOS and Windows, drawn in the window on Linux (src/gui/drawn, nested event loops;
+// SQ8L_DRAWN_UI=1 selects them on macOS too, for testing).
+#include <algorithm>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <mutex>
+#include <thread>
 #include <vector>
 
 #include "DistrhoUI.hpp"
@@ -19,11 +23,13 @@
 #include "logic/EditorController.h"
 #include "logic/EditorHost.h"
 #include "text/StbTextRenderer.h"
+#include "drawn/PlatformUiDrawn.h"
 
 #if defined(__APPLE__)
 #include <OpenGL/gl.h>
 #include "mac/PlatformUiMac.h"
-using PlatformImpl = sq8l::gui::PlatformUiMac;
+using NativePlatform = sq8l::gui::PlatformUiMac;
+#define SQ8L_NATIVE_UI 1
 #elif defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -34,9 +40,13 @@ using PlatformImpl = sq8l::gui::PlatformUiMac;
 #include <windows.h>
 #include <GL/gl.h>
 #include "win/PlatformUiWin.h"
-using PlatformImpl = sq8l::gui::PlatformUiWin;
+using NativePlatform = sq8l::gui::PlatformUiWin;
+#define SQ8L_NATIVE_UI 1
 #else
-#error "no PlatformUi implementation for this platform yet"
+#include <GL/gl.h>
+#include "Application.hpp"  // DGL: getApp().idle() for the nested loops
+#include "linux/X11Pointer.h"
+#define SQ8L_NATIVE_UI 0
 #endif
 #ifndef GL_CLAMP_TO_EDGE
 #define GL_CLAMP_TO_EDGE 0x812F
@@ -125,26 +135,77 @@ public:
         rgb_.resize(static_cast<size_t>(EditorView::kWidth) * EditorView::kHeight * 3);
         view_->setTextRenderer(&text_);
 
-        PlatformImpl::Hooks hooks;
-        hooks.releaseEngine = [this] { releaseEngine(); };
-        hooks.acquireEngine = [this] { acquireEngine(); };
-        hooks.pump = [this] {
+        auto releaseHook = [this] {  // a native or drawn modal loop starts
+            ++modalLoops_;
+            releaseEngine();
+        };
+        auto acquireHook = [this] { acquireEngine(); };
+        auto pumpHook = [this] {
             if (!controller_) return;
             deliverNotifications();
             controller_->pump();
         };
-        hooks.nameFocus = [this](bool focused, const std::string& text) {
+        auto nameFocusHook = [this](bool focused, const std::string& text) {
             Engine lock(*this);
+            // The original's name box is a Windows EDIT control: after editing it keeps
+            // showing the typed text (here the box is drawn from NameEdit::text).
+            if (!focused) view_->progNameEdit().setText(text);
             if (controller_) controller_->nameEditFocus(focused, text);
             repaint();
         };
-        hooks.nameKey = [this](int key) {
+        auto nameKeyHook = [this](int key) {
             Engine lock(*this);
             if (controller_) controller_->nameEditKeyDown(key);
         };
-        platform_ = std::make_unique<PlatformImpl>(reinterpret_cast<void*>(getWindow().getNativeWindowHandle()), hooks);
+#if SQ8L_NATIVE_UI
+        NativePlatform::Hooks hooks;
+        hooks.releaseEngine = releaseHook;
+        hooks.acquireEngine = acquireHook;
+        hooks.pump = pumpHook;
+        hooks.nameFocus = nameFocusHook;
+        hooks.nameKey = nameKeyHook;
+        native_ = std::make_unique<NativePlatform>(reinterpret_cast<void*>(getWindow().getNativeWindowHandle()), hooks);
+#endif
+#if defined(__APPLE__) || !SQ8L_NATIVE_UI
+        if (!SQ8L_NATIVE_UI || std::getenv("SQ8L_DRAWN_UI")) {
+            sq8l::gui::PlatformUiDrawn::Hooks dh;
+            dh.releaseEngine = releaseHook;
+            dh.acquireEngine = acquireHook;
+            dh.pump = pumpHook;
+            dh.nameFocus = nameFocusHook;
+            dh.nameKey = nameKeyHook;
+            dh.runLoopStep = [this] { return nestedLoopStep(); };
+            dh.repaint = [this] { repaint(); };
+#if SQ8L_NATIVE_UI
+            dh.fileDialog = [this](const sq8l::gui::FileDialogRequest& r, std::string& path) {
+                return native_->fileDialog(r, path);
+            };
+            dh.cursorPos = [this](sq8l::gui::Point& p) {
+                p = native_->cursorPos();
+                return true;
+            };
+            dh.setCursorPos = [this](sq8l::gui::Point p) { native_->setCursorPos(p); };
+#else
+            dh.fileDialog = [this](const sq8l::gui::FileDialogRequest& r, std::string& path) {
+                return fileBrowser(r, path);
+            };
+            dh.cursorPos = [this](sq8l::gui::Point& p) {
+                int wx, wy;
+                if (!sq8l::x11::queryPointer(getWindow().getNativeWindowHandle(), wx, wy)) return false;
+                toForm(wx, wy, p.x, p.y);
+                return true;
+            };
+            dh.setCursorPos = [this](sq8l::gui::Point p) {
+                sq8l::x11::warpPointer(getWindow().getNativeWindowHandle(),
+                                       static_cast<int>(p.x * static_cast<double>(getWidth()) / EditorView::kWidth),
+                                       static_cast<int>(p.y * static_cast<double>(getHeight()) / EditorView::kHeight));
+            };
+#endif
+            drawn_ = std::make_unique<sq8l::gui::PlatformUiDrawn>(text_, dh);
+        }
+#endif
         Engine lock(*this);
-        controller_ = std::make_unique<sq8l::gui::EditorController>(*view_, host_, *platform_, gEditorsOpened++ == 0);
+        controller_ = std::make_unique<sq8l::gui::EditorController>(*view_, host_, platform(), gEditorsOpened++ == 0);
         host_.setController(controller_.get());
         view_->onContextMenu = [this](sq8l::gui::Control&, int x, int y) { controller_->contextMenu(x, y); };
         controller_->show();
@@ -173,6 +234,10 @@ protected:
     void parameterChanged(uint32_t, float) override {}
 
     void uiIdle() override {
+        if (drawn_ && drawn_->modal()) {  // (a host timer inside a nested loop: the dialog runs)
+            repaint();
+            return;
+        }
         const auto now = std::chrono::steady_clock::now();
         if (now - lastTick_ < std::chrono::milliseconds(20)) return;
         int ms = static_cast<int>(std::chrono::duration_cast<std::chrono::milliseconds>(now - lastTick_).count());
@@ -190,7 +255,13 @@ protected:
             Engine lock(*this);
             view_->render(frame_);
         }
-        frame_.toRGB24(rgb_.data());
+        if (drawn_ && drawn_->hasOverlay()) {  // drawn menus and dialogs over the editor
+            overlay_ = frame_;
+            drawn_->render(overlay_);
+            overlay_.toRGB24(rgb_.data());
+        } else {
+            frame_.toRGB24(rgb_.data());
+        }
         if (!texture_) {
             glGenTextures(1, &texture_);
             glBindTexture(GL_TEXTURE_2D, texture_);
@@ -198,6 +269,14 @@ protected:
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
             glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        }
+        // Debugging aid: SQ8L_UI_FRAME=/path/frame.ppm keeps the last frame shown (with overlays).
+        if (const char* path = std::getenv("SQ8L_UI_FRAME")) {
+            if (FILE* f = std::fopen(path, "wb")) {
+                std::fprintf(f, "P6\n%d %d\n255\n", EditorView::kWidth, EditorView::kHeight);
+                std::fwrite(rgb_.data(), 1, rgb_.size(), f);
+                std::fclose(f);
+            }
         }
         glBindTexture(GL_TEXTURE_2D, texture_);
         glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
@@ -225,23 +304,36 @@ protected:
         const uint32_t keys = keysOf(ev.mod);
         if (std::getenv("SQ8L_UI_DEBUG"))
             std::fprintf(stderr, "[sq8l-ui] mouse %s button %u at form %d,%d\n", ev.press ? "down" : "up", ev.button, x, y);
+        // Windows double click: same button within 500 ms and a few pixels.
+        const bool dbl = ev.press && b == lastButton_ && ev.time - lastTime_ <= 500 && std::abs(x - lastX_) <= 2 &&
+                         std::abs(y - lastY_) <= 2;
+        if (drawn_ && drawn_->modal()) {  // an open drawn menu or dialog takes the input
+            if (ev.press) {
+                drawn_->mouseDown(b, x, y, dbl);
+                lastTime_ = dbl ? 0 : ev.time;
+                lastButton_ = b, lastX_ = x, lastY_ = y;
+            } else {
+                drawn_->mouseUp(b, x, y);
+            }
+            repaint();
+            return true;
+        }
         {
             Engine lock(*this);
             if (ev.press) {
                 buttons_ |= bit(b);
-                // The program name box is a native edit control: a left click focuses it.
+                // The program name box is an edit control: a left click focuses it.
                 const sq8l::gui::NameEdit& edit = view_->progNameEdit();
                 const auto r = edit.bounds();
                 const bool inEdit = x >= r.left && x < r.right && y >= r.top && y < r.bottom;
-                if (b == MouseButton::Left && inEdit && platform_) {
-                    platform_->beginNameEdit(r.left, r.top, r.width(), r.height(), edit.text);
+                if (b == MouseButton::Left && inEdit) {
+                    if (!nameEditing()) beginNameEdit(r.left, r.top, r.width(), r.height(), edit.text);
+                    else if (drawn_) drawn_->mouseDown(b, x, y, false);  // move the caret
                     repaint();
                     return true;
                 }
-                if (platform_ && platform_->nameEditing()) platform_->focusForm();
-                // Windows double click: same button within 500 ms and a few pixels.
-                const bool dbl = b == lastButton_ && ev.time - lastTime_ <= 500 && std::abs(x - lastX_) <= 2 &&
-                                 std::abs(y - lastY_) <= 2;
+                if (nameEditing()) focusName();
+                const int loops = modalLoops_;
                 if (dbl) {
                     view_->mouseDoubleClick(b, x, y, keys | buttons_);
                     lastTime_ = 0;
@@ -252,6 +344,10 @@ protected:
                 lastButton_ = b;
                 lastX_ = x;
                 lastY_ = y;
+                if (modalLoops_ != loops) {  // a menu/dialog opened by this press took the mouse
+                    view_->cancelMouseMode();
+                    buttons_ &= ~bit(b);
+                }
             } else {
                 buttons_ &= ~bit(b);
                 view_->mouseUp(b, x, y, keys | buttons_);
@@ -266,6 +362,10 @@ protected:
     bool onMotion(const MotionEvent& ev) override {
         int x, y;
         toForm(ev.pos.getX(), ev.pos.getY(), x, y);
+        if (drawn_) {
+            drawn_->mouseMove(x, y);
+            if (drawn_->modal()) return true;
+        }
         {
             Engine lock(*this);
             view_->mouseMove(x, y, keysOf(ev.mod) | buttons_);
@@ -275,7 +375,125 @@ protected:
         return true;
     }
 
+    bool onScroll(const ScrollEvent& ev) override {
+        if (!drawn_ || !drawn_->modal()) return false;
+        int x, y;
+        toForm(ev.pos.getX(), ev.pos.getY(), x, y);
+        drawn_->wheel(x, y, ev.delta.getY() > 0 ? 1 : -1);
+        return true;
+    }
+
+    // Keyboard for the drawn menus, dialogs and name box (the native ones get it themselves).
+    bool onKeyboard(const KeyboardEvent& ev) override {
+        if (std::getenv("SQ8L_UI_DEBUG"))
+            std::fprintf(stderr, "[sq8l-ui] key %s %#x (keycode %u) modal %d name %d\n", ev.press ? "down" : "up", ev.key,
+                         ev.keycode, drawn_ && drawn_->modal(), drawn_ && drawn_->nameEditing());
+        if (!drawn_ || !drawn_->wantsKeyboard() || !ev.press) return false;
+        int vk = 0;
+        switch (ev.key) {
+        case kKeyBackspace: vk = sq8l::gui::kVkBack; break;
+        case kKeyEnter: vk = sq8l::gui::kVkReturn; break;
+        case kKeyEscape: vk = sq8l::gui::kVkEscape; break;
+        case kKeyDelete: vk = sq8l::gui::kVkDelete; break;
+        case kKeyLeft: vk = sq8l::gui::kVkLeft; break;
+        case kKeyRight: vk = sq8l::gui::kVkRight; break;
+        case kKeyUp: vk = sq8l::gui::kVkUp; break;
+        case kKeyDown: vk = sq8l::gui::kVkDown; break;
+        case kKeyPageUp: vk = sq8l::gui::kVkPrior; break;
+        case kKeyPageDown: vk = sq8l::gui::kVkNext; break;
+        case kKeyHome: vk = sq8l::gui::kVkHome; break;
+        case kKeyEnd: vk = sq8l::gui::kVkEnd; break;
+        default:
+            // printable keys: text for the name box (onCharacterInput), "any key" for dialogs
+            if (!drawn_->modal()) return false;
+            vk = ev.key >= 'a' && ev.key <= 'z' ? static_cast<int>(ev.key - 'a' + 'A') : static_cast<int>(ev.key);
+            break;
+        }
+        drawn_->keyDown(vk);
+        repaint();
+        return true;
+    }
+
+    bool onCharacterInput(const CharacterInputEvent& ev) override {
+        if (!drawn_ || !drawn_->nameEditing() || drawn_->modal()) return false;
+        drawn_->character(ev.character);
+        repaint();
+        return true;
+    }
+
+#if DISTRHO_UI_FILE_BROWSER
+    void uiFileBrowserSelected(const char* filename) override {
+        fileChosen_ = filename ? filename : "";
+        fileDone_ = true;
+    }
+#endif
+
 private:
+    sq8l::gui::PlatformUi& platform() {
+#if SQ8L_NATIVE_UI
+        if (!drawn_) return *native_;
+#endif
+        return *drawn_;
+    }
+    void beginNameEdit(int l, int t, int w, int h, const std::string& text) {
+#if SQ8L_NATIVE_UI
+        if (!drawn_) return native_->beginNameEdit(l, t, w, h, text);
+#endif
+        drawn_->beginNameEdit(l, t, w, h, text);
+    }
+    bool nameEditing() const {
+#if SQ8L_NATIVE_UI
+        if (!drawn_) return native_->nameEditing();
+#endif
+        return drawn_->nameEditing();
+    }
+    void focusName() { platform().focusForm(); }
+
+    // One step of the nested event loop of the drawn menus and dialogs.
+    bool nestedLoopStep() {
+#if defined(__APPLE__)
+        return sq8l::gui::macRunLoopStep(0.008);
+#elif SQ8L_NATIVE_UI
+        return false;
+#else
+        getApp().idle();  // pugl dispatches the window's events (patches/pugl-x11-nested-update.patch)
+        std::this_thread::sleep_for(std::chrono::milliseconds(8));
+        return true;
+#endif
+    }
+
+#if DISTRHO_UI_FILE_BROWSER
+    // DPF's file browser (xdg portal or its X11 dialog), waited for in a nested loop.
+    bool fileBrowser(const sq8l::gui::FileDialogRequest& req, std::string& path) {
+        std::string name = req.fileName;
+        const size_t slash = name.find_last_of("\\/");
+        if (slash != std::string::npos) name = name.substr(slash + 1);
+        if (req.save && name.empty()) name = "untitled." + req.defaultExt;
+        // (the X11 dialog wants the start folder with its trailing slash)
+        const std::string dir = req.initialDir.empty() || req.initialDir.back() == '/' ? req.initialDir
+                                                                                        : req.initialDir + "/";
+        FileBrowserOptions o;
+        o.saving = req.save;
+        o.defaultName = name.c_str();
+        o.startDir = dir.empty() ? nullptr : dir.c_str();
+        o.title = req.save ? "SQ8L - Save" : "SQ8L - Open";
+        fileDone_ = false;
+        fileChosen_.clear();
+        if (!openFileBrowser(o)) return false;
+        releaseEngine();
+        while (!fileDone_ && nestedLoopStep()) {}
+        acquireEngine();
+        if (fileChosen_.empty()) return false;
+        path = fileChosen_;
+        // the default extension, like TSaveDialog.DefaultExt
+        const size_t base = path.find_last_of('/');
+        if (req.save && !req.defaultExt.empty() &&
+            path.find('.', base == std::string::npos ? 0 : base + 1) == std::string::npos)
+            path += "." + req.defaultExt;
+        return true;
+    }
+#endif
+
     // Post the master's queued notifications to the editor (engine lock held).
     void deliverNotifications() {
         for (const auto& m : plugin_.takeEditorMessages()) {
@@ -314,12 +532,19 @@ private:
     PluginEditorHost host_;
     sq8l::gui::StbTextRenderer text_{true};  // antialiased text
     std::unique_ptr<EditorView> view_;
-    std::unique_ptr<PlatformImpl> platform_;
+#if SQ8L_NATIVE_UI
+    std::unique_ptr<NativePlatform> native_;
+#endif
+    std::unique_ptr<sq8l::gui::PlatformUiDrawn> drawn_;
     std::unique_ptr<sq8l::gui::EditorController> controller_;
     sq8l::gui::Bitmap frame_;
+    sq8l::gui::Bitmap overlay_;
+    bool fileDone_ = false;
+    std::string fileChosen_;
     std::vector<uint8_t> rgb_;
     GLuint texture_ = 0;
     int depth_ = 0;
+    int modalLoops_ = 0;  // modal loops started (menus/dialogs), see onMouse
     uint32_t buttons_ = 0;
     MouseButton lastButton_ = MouseButton::Left;
     uint lastTime_ = 0;

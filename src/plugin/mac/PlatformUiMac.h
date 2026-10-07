@@ -47,4 +47,8 @@ private:
     std::unique_ptr<Impl> impl_;
 };
 
+// One step of a nested event loop (the drawn menus and dialogs, SQ8L_DRAWN_UI=1 for
+// testing them on macOS): dispatch the next window event, waiting at most `seconds`.
+bool macRunLoopStep(double seconds);
+
 }  // namespace sq8l::gui

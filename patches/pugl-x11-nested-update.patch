@@ -1,0 +1,23 @@
+Let an event handler run a nested event loop on X11 (SQ8L modal menus and dialogs).
+
+puglUpdate() refuses to run while events are being dispatched, so a modal loop started
+from a mouse handler (the editor's popup menus and dialogs, drawn in the plugin window on
+Linux) could not process the window's events. Allow it, as the Windows backend does in
+its recursive loops: the nested call dispatches and exposes, then restores the state.
+
+diff --git a/src/x11.c b/src/x11.c
+index 84a6fa3..4e03228 100644
+--- a/src/x11.c
++++ b/src/x11.c
+@@ -1848,7 +1848,10 @@ puglUpdate(PuglWorld* const world, const double timeout)
+ 
+   if (startState == PUGL_WORLD_IDLE) {
+     world->state = PUGL_WORLD_UPDATING;
+-  } else if (startState != PUGL_WORLD_RECURSING) {
++  } else if (startState != PUGL_WORLD_RECURSING &&
++             startState != PUGL_WORLD_UPDATING) {
++    // (SQ8L) an event handler may run a nested loop (modal menus and dialogs drawn in
++    // the window): process events recursively, like the Windows and macOS modal loops.
+     return PUGL_BAD_CALL;
+   }
+ 

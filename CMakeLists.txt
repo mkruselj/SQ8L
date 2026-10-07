@@ -65,6 +65,7 @@ target_include_directories(sq8l_engine PUBLIC src/engine)
 target_compile_options(sq8l_engine PRIVATE ${SQ8L_FP_FLAGS} ${SQ8L_WARN_FLAGS})
 add_subdirectory(src/gui)
 add_subdirectory(src/gui/logic)
+add_subdirectory(src/gui/drawn)
 
 # C API used by the Python differential tests against the emulated original.
 file(GLOB SQ8L_TESTAPI_SOURCES CONFIGURE_DEPENDS tests/capi*.cpp)
@@ -75,17 +76,21 @@ target_compile_options(sq8l_testapi PRIVATE ${SQ8L_FP_FLAGS})
 # ---------------------------------------------------------------- plugin (DPF)
 option(SQ8L_BUILD_PLUGIN "Build the SQ8L plugin (VST2/VST3/AU/CLAP)" ON)
 if(SQ8L_BUILD_PLUGIN)
-  # Local DPF patches (kept out of the submodule): apply once if not yet applied.
-  foreach(patch dpf-vst2-compat.patch dpf-msvc-enum.patch)
+  # Local DPF / pugl patches (kept out of the submodules): apply once if not yet applied.
+  foreach(entry "dpf-vst2-compat.patch=third_party/DPF" "dpf-msvc-enum.patch=third_party/DPF"
+                "pugl-x11-nested-update.patch=third_party/DPF/dgl/src/pugl-upstream")
+    string(REPLACE "=" ";" entry "${entry}")
+    list(GET entry 0 patch)
+    list(GET entry 1 dir)
     execute_process(COMMAND git apply --reverse --check ${CMAKE_SOURCE_DIR}/patches/${patch}
-                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/third_party/DPF
+                    WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/${dir}
                     RESULT_VARIABLE already OUTPUT_QUIET ERROR_QUIET)
     if(NOT already EQUAL 0)
       execute_process(COMMAND git apply ${CMAKE_SOURCE_DIR}/patches/${patch}
-                      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/third_party/DPF
+                      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/${dir}
                       RESULT_VARIABLE failed)
       if(failed)
-        message(FATAL_ERROR "could not apply patches/${patch} to third_party/DPF")
+        message(FATAL_ERROR "could not apply patches/${patch} to ${dir}")
       endif()
     endif()
   endforeach()
@@ -120,17 +125,30 @@ if(SQ8L_BUILD_PLUGIN)
     # GNU-driver clang that merely targets the MSVC ABI.
     target_include_directories(dgl-system-libs-definitions INTERFACE ${SQ8L_KHRONOS_DIR})
   endif()
-  dpf_add_plugin(sq8l
-    TARGETS vst2 vst3 au clap
+  # Formats per system (Audio Unit on macOS, LV2 on Linux); the Linux editor uses DPF's
+  # file browser (its menus and dialogs are drawn in the window, src/gui/drawn).
+  if(APPLE)
+    set(SQ8L_FORMATS vst2 vst3 au clap)
+    set(SQ8L_DPF_OPTIONS)
+  elseif(WIN32)
+    set(SQ8L_FORMATS vst2 vst3 clap)
+    set(SQ8L_DPF_OPTIONS)
+  else()
+    set(SQ8L_FORMATS vst2 vst3 clap lv2)
+    set(SQ8L_DPF_OPTIONS USE_FILE_BROWSER)
+  endif()
+  dpf_add_plugin(sq8l ${SQ8L_DPF_OPTIONS}
+    TARGETS ${SQ8L_FORMATS}
     UI_TYPE opengl
     FILES_DSP src/plugin/SQ8LPlugin.cpp
     FILES_UI src/plugin/SQ8LUI.cpp
              $<$<PLATFORM_ID:Darwin>:${CMAKE_SOURCE_DIR}/src/plugin/mac/PlatformUiMac.mm>
-             $<$<PLATFORM_ID:Windows>:${CMAKE_SOURCE_DIR}/src/plugin/win/PlatformUiWin.cpp>)
+             $<$<PLATFORM_ID:Windows>:${CMAKE_SOURCE_DIR}/src/plugin/win/PlatformUiWin.cpp>
+             $<$<PLATFORM_ID:Linux>:${CMAKE_SOURCE_DIR}/src/plugin/linux/X11Pointer.cpp>)
   target_include_directories(sq8l PUBLIC src/plugin)
   target_link_libraries(sq8l PUBLIC sq8l_engine)
   target_link_libraries(sq8l-dsp PUBLIC sq8l_engine)
-  target_link_libraries(sq8l-ui PUBLIC sq8l_gui sq8l_gui_logic sq8l_engine)
+  target_link_libraries(sq8l-ui PUBLIC sq8l_gui sq8l_gui_logic sq8l_gui_drawn sq8l_engine)
   if(WIN32)
     target_link_libraries(sq8l-ui PUBLIC comdlg32 gdi32 user32)
   endif()
@@ -141,6 +159,10 @@ if(SQ8L_BUILD_PLUGIN)
   target_include_directories(sq8l-ui PUBLIC src/plugin src/gui)
   target_compile_options(sq8l-dsp PRIVATE ${SQ8L_FP_FLAGS})
 endif()
+
+# The drawn menus and dialogs of the Linux editor, without a window (tests/drawn_check.cpp).
+add_executable(sq8l_drawn_check tests/drawn_check.cpp)
+target_link_libraries(sq8l_drawn_check PRIVATE sq8l_gui_drawn)
 
 # Native full-render checker (tests/render_check.cpp), see tests/export_golden_raw.py.
 add_executable(sq8l_render_check tests/render_check.cpp)

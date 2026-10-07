@@ -97,6 +97,9 @@ public:
     // ControlHost
     Control* mouseCapture() const override { return capture_; }
     void setMouseCapture(Control* c) override;
+    // Windows WM_CANCELMODE / WM_CAPTURECHANGED: a menu or modal loop took the mouse, so the
+    // control that had it gets no button-up (the platform layer calls it after such a loop).
+    void cancelMouseMode();
     void setFocus(Control* c) override { focus_ = c; }
     TextRenderer* textRenderer() override { return text_; }
     Control* focused() const { return focus_; }

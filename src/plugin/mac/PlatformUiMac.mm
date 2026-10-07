@@ -468,4 +468,15 @@ void PlatformUiMac::showAbout(const std::string& text) {
     [a runModal];
 }
 
+bool macRunLoopStep(double seconds) {
+    @autoreleasepool {
+        NSEvent* ev = [NSApp nextEventMatchingMask:NSEventMaskAny
+                                         untilDate:[NSDate dateWithTimeIntervalSinceNow:seconds]
+                                            inMode:NSDefaultRunLoopMode
+                                           dequeue:YES];
+        if (ev) [NSApp sendEvent:ev];
+    }
+    return true;
+}
+
 }  // namespace sq8l::gui

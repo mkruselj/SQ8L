@@ -283,6 +283,11 @@ void EditorView::render(Bitmap& out) {
 
 // ------------------------------------------------------------------ input
 
+void EditorView::cancelMouseMode() {
+    if (capture_) capture_->clicked = false;
+    setMouseCapture(nullptr);
+}
+
 void EditorView::setMouseCapture(Control* c) {
     capture_ = c;
     if (c == nullptr)
