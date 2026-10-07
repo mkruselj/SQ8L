@@ -14,6 +14,7 @@
 #include "MidiParser.h"
 #include "Voice.h"
 #include "VoiceModules.h"
+#include "VoiceSlots.h"
 
 namespace sq8l {
 
@@ -40,7 +41,7 @@ struct NoteRecord {
 
 class Master final : public MidiListener {
 public:
-    static constexpr int kMaxVoices = 16;
+    static constexpr int kMaxVoices = kMaxVoiceSlots;  // the original: 16 (see VoiceSlots.h)
     static constexpr float kDefaultControlRate = 83.592575f;  // 0x42a72f66
 
     // FUN_00461cac minus the construction of the modules (done by the caller, who also
@@ -62,6 +63,8 @@ public:
     int32_t setSampleRateInt(int32_t sampleRate);    // FUN_00462214: 0 or 0xffff53bc (sr < 40000)
     void setControlRate(float rate);                  // FUN_00462380
     void setVoices(int32_t playable, int32_t fade);   // FUN_00463358 (the original uses 8 + 8)
+    int32_t playableVoices() const { return numPlay_; }
+    uint32_t stealCount() const { return stealCount_; }  // (port) see stealCount_
     void panic();                                     // FUN_00462174 (GUI panic button, MIDI reset)
     // FUN_004620e4: the 5 [synth] settings by config index (FUN_00452c5c(cfg, i), i.e. the
     // SQ8L.ini keys voiceStealMode, muffleMode, oscDcaMode, dca4Mode, dcbMode in that
@@ -173,6 +176,9 @@ private:
     float smoothB_ = 0;                               // +0x11008 (computed, never used)
     float smoothA_ = 0;                               // +0x1100c (computed, never used)
     int16_t ctrl_[131] = {};                          // +0x11010 + (n + 1) * 16, n = -1..0x81
+    // (port) notes that took over a sounding voice (allocate): with more voices they would
+    // have found a free one. Not in the original; tests/render_check.cpp --voices uses it.
+    uint32_t stealCount_ = 0;
     int16_t polyPressure_[128] = {};                  // +0x11840 + key * 16
     int16_t pitchBend_ = 0;                           // +0x12040 raw -8192..8191
     uint8_t inProcess_ = 0;                           // +0x12050

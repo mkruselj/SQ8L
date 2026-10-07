@@ -15,6 +15,8 @@
 
 #include <cstdint>
 
+#include "VoiceSlots.h"
+
 namespace sq8l {
 
 // Oscillator parameters written by plugCore (0x18 bytes).
@@ -106,17 +108,19 @@ struct DocVoice {
 
 class Doc {
 public:
-    static constexpr uint32_t kMaxVoices = 16;
+    static constexpr uint32_t kMaxVoices = kMaxVoiceSlots;  // array size (the original: 16, see VoiceSlots.h)
     static constexpr float kDocRate = 38455.85546875f;  // 0x471637db
 
     // Constructor (FUN_0045b9e0; run with the host FPU mode: round to nearest). The original
     // also decompresses the wave ROM into a heap block (+0x2008); we use data::kWaveRom.
-    explicit Doc(uint32_t numVoices = kMaxVoices);
+    // `capacity`: slots in use, the original's 16 unless more polyphony is wanted (the
+    // engine passes kMaxVoiceSlots); numVoices and the voice links are limited to it.
+    explicit Doc(uint32_t numVoices = kOriginalVoiceSlots, uint32_t capacity = kOriginalVoiceSlots);
 
     void setNumVoices(uint32_t n);          // FUN_0045bc20 (clamped to 16)
     void setSampleRate(float sr);           // FUN_0045bc4c
     void resetAll();                        // FUN_0045bc18 / FUN_0045bc00: resetVoice(0..15)
-    void resetVoice(uint32_t v);            // FUN_0045bb54 (ignores numVoices, only v < 16)
+    void resetVoice(uint32_t v);            // FUN_0045bb54 (ignores numVoices, only v < capacity)
 
     // Voice start (FUN_0045bcd0; Delphi argument order: voice, key, resetPhase, newNote,
     // linkedVoice): key for wave and pitch, linked voice (phase source for the first update,
@@ -139,6 +143,7 @@ public:
     // ---- state, laid out as in the original object (offsets from the object start) ----
     // +0x0000 vmt
     uint32_t numVoices = 0;                 // +0x0004
+    uint32_t capacity = kOriginalVoiceSlots;  // (port, not in the original object)
     DocVoice voice[kMaxVoices] = {};        // +0x0008
     // +0x2008 pointer to the decompressed wave ROM (here: data::kWaveRom)
     float dither[2] = {};                   // +0x200c  +1e-10, -1e-10

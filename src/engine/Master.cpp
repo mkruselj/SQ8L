@@ -167,7 +167,7 @@ void Master::setVoices(int32_t playable, int32_t fade) {
 
 void Master::setNumVoices(int32_t n) {
     lockCount_++;
-    numVoices_ = n > 16 ? 16 : n;
+    numVoices_ = n > kMaxVoices ? kMaxVoices : n;
     volume_ = 0.8f;  // 0x3f4ccccd
     reset();
     modules_.docSetNumVoices(numVoices_);
@@ -201,10 +201,16 @@ void Master::resetVoices() {
         list_[i] = {nullptr, -1};
         slotMap_[i] = i;
     }
+    // (port) the slots beyond the original's 16 are unused (fewer voices) or reset above:
+    // keep them free so that listRemove finds nothing there, as with the original's arrays.
+    for (int32_t i = numVoices_ > kOriginalVoiceSlots ? numVoices_ : kOriginalVoiceSlots; i < kMaxVoices; i++) {
+        clearVoice(i);
+        list_[i] = {nullptr, -1};
+    }
 }
 
 void Master::clearVoice(int32_t slot) {
-    if (slot < 0 || slot > 15) return;
+    if (slot < 0 || slot >= kMaxVoices) return;
     Voice& v = voices_[slot];
     v.active = 0;
     v.age = 0;
@@ -421,7 +427,7 @@ void Master::noteEvent(int32_t key, int32_t velocity, int32_t noteId, NoteRecord
 
 void Master::stealStart(int32_t mapIndex, int32_t noteId, bool newNote, NoteRecord* rec, bool oscRestart,
                         bool fullInit, uint8_t velocity, int32_t glideFrom, int32_t key) {
-    if (mapIndex < 0 || mapIndex > 15) return;
+    if (mapIndex < 0 || mapIndex >= kMaxVoices) return;
     int32_t slot = slotMap_[mapIndex];
     rec->stolenFrom = &voices_[slot];
     if (rec->steal != 0) {
@@ -672,9 +678,9 @@ void Master::listRemove(int32_t slot) {
     }
     if (found < 0) return;
     listCount_--;
-    if (found < numVoices_ - 1 && found <= 14)
-        for (int32_t j = found; j != 15; j++) list_[j] = list_[j + 1];
-    list_[15] = {nullptr, -1};
+    if (found < numVoices_ - 1 && found <= kMaxVoices - 2)
+        for (int32_t j = found; j != kMaxVoices - 1; j++) list_[j] = list_[j + 1];
+    list_[kMaxVoices - 1] = {nullptr, -1};
 }
 
 int32_t Master::allocate() {
@@ -702,6 +708,7 @@ int32_t Master::allocate() {
             }
         }
     }
+    if (voiceAt(result).active != 0 && voiceAt(result).age != 0) stealCount_++;  // (port)
     return result;
 }
 

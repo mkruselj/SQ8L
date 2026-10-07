@@ -168,8 +168,16 @@ void EditorController::buildMenus() {
     o.push_back(rest);
     o.push_back(item("Right click on display -> scroll page", 0, [this](MenuNode& n) { rmbScrDispClick(n); }));
     if (host_.portExtensions()) {
-        // Port additions: the original's hidden swapProgUpDn ini key, and the load prompts.
+        // Port additions: polyphony, the original's hidden swapProgUpDn ini key, load prompts.
         o.push_back(line());
+        MenuNode poly = item("Polyphony...", 0, nullptr);
+        auto polyClick = [this](MenuNode& n) { polyphonyClick(n); };
+        poly.items.push_back(item("8 voices   (SQ80)", 8, polyClick, true, true));
+        poly.items.push_back(item("12 voices", 12, polyClick, true, true));
+        poly.items.push_back(item("16 voices", 16, polyClick, true, true));
+        poly.items.push_back(item("24 voices", 24, polyClick, true, true));
+        poly.items.push_back(item("32 voices", 32, polyClick, true, true));
+        o.push_back(poly);
         o.push_back(item("Down arrow -> next program", 0, [this](MenuNode& n) { swapProgUpDnClick(n); }));
         o.push_back(item("Ask before loading banks/libraries", 0, [this](MenuNode& n) { confirmLoadClick(n); }));
     }
@@ -205,8 +213,9 @@ void EditorController::buildMenus() {
     menuRestMouseKnob_ = &optionsMenu_.items[3].items[1];
     menuRmbScrDisp_ = &optionsMenu_.items[4];
     if (host_.portExtensions()) {
-        menuSwapProgUpDn_ = &optionsMenu_.items[6];
-        menuConfirmLoad_ = &optionsMenu_.items[7];
+        menuPolyphony_ = &optionsMenu_.items[6];
+        menuSwapProgUpDn_ = &optionsMenu_.items[7];
+        menuConfirmLoad_ = &optionsMenu_.items[8];
     }
     pageMenu_.autoHotkeys = false;     // menuPagePopup: AutoHotkeys = maManual
     programMenu_.autoHotkeys = false;  // FUN_0043bb14
@@ -464,6 +473,8 @@ void EditorController::settingsChanged() {  // FUN_00483b08
     swapProgUpDn_ = s.swapProgramUpDown();
     if (menuSwapProgUpDn_) menuSwapProgUpDn_->setChecked(swapProgUpDn_);
     if (menuConfirmLoad_) menuConfirmLoad_->setChecked(s.confirmLoading());
+    if (menuPolyphony_)
+        for (MenuNode& n : menuPolyphony_->items) n.checked = n.tag == s.polyphony();
     b = s.rightClickScrollsDisplay();
     if (b != rmbScroll_) {
         rmbScroll_ = b;
@@ -965,6 +976,14 @@ void EditorController::swapProgUpDnClick(MenuNode& item) {
     item.setChecked(!item.checked);
     host_.setGuiSetting(4, item.checked);
     swapProgUpDn_ = host_.settings().swapProgramUpDown();
+}
+
+// Port addition: playable voices ([port] polyphony), applied by the host to the synth.
+void EditorController::polyphonyClick(MenuNode& item) {
+    if (item.checked) return;
+    item.setChecked(true);
+    host_.setPortSetting(1, item.tag);
+    updateVoices();
 }
 
 // Port addition: ask before loading a library, a bank or a SysEx bank ([port] confirmLoad).

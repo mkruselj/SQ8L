@@ -96,7 +96,8 @@ uint32_t docPitchToFreq(int32_t pitch) {
 
 // ------------------------------------------------------------------ construction
 
-Doc::Doc(uint32_t n) {
+Doc::Doc(uint32_t n, uint32_t cap) {
+    capacity = cap < kMaxVoices ? cap : kMaxVoices;
     numVoices = 0;
     setNumVoices(n);
     // The original decompresses the wave ROM here (CpackDlt36 -> +0x2008): data::kWaveRom.
@@ -130,7 +131,7 @@ void Doc::initConstants() {
     k85_36 = bitsToFloat(0x40171c72);
 }
 
-void Doc::setNumVoices(uint32_t n) { numVoices = n < kMaxVoices ? n : kMaxVoices; }
+void Doc::setNumVoices(uint32_t n) { numVoices = n < capacity ? n : capacity; }
 
 void Doc::setDocRate(float rate) {
     docRate = rate;
@@ -172,11 +173,11 @@ void Doc::computeDcBlocker() {
 // ------------------------------------------------------------------ voice management
 
 void Doc::resetAll() {
-    for (uint32_t v = 0; v < kMaxVoices; v++) resetVoice(v);
+    for (uint32_t v = 0; v < capacity; v++) resetVoice(v);
 }
 
 void Doc::resetVoice(uint32_t v) {
-    if (v >= kMaxVoices) return;
+    if (v >= capacity) return;
     param[v] = DocVoiceParams{};
     DocVoice& vc = voice[v];
     vc = DocVoice{};
@@ -198,7 +199,7 @@ void Doc::startVoice(uint32_t v, int32_t key, int32_t linkedVoice, int32_t newNo
     p.resetPhase = resetPhase;
     p.newNote = newNote;
     p.forceRecalc = -1;
-    p.linkedSlot = (linkedVoice < 0 || linkedVoice > 15) ? 0 : linkedVoice + 1;
+    p.linkedSlot = (linkedVoice < 0 || linkedVoice >= static_cast<int32_t>(capacity)) ? 0 : linkedVoice + 1;
     p.waveKey = key;
     p.pitchKey = key;
     for (DocOscParams& op : p.osc) op.pitchMod = 0;
@@ -375,7 +376,7 @@ void Doc::update(uint32_t v) {
         if (noPhaseCopy != 0) {
             o.acc = 0;
             o.wrapped = 0;
-        } else if (p.init != 0 && p.linkedSlot > 0 && p.linkedSlot <= static_cast<int32_t>(kMaxVoices)) {
+        } else if (p.init != 0 && p.linkedSlot > 0 && p.linkedSlot <= static_cast<int32_t>(capacity)) {
             const DocOsc& src = voice[p.linkedSlot - 1].osc[i];
             o.acc = src.acc;
             o.wrapped = src.wrapped;

@@ -97,7 +97,7 @@ SQ8L_API void sq8l_doc_free(void* d) { delete static_cast<Doc*>(d); }
 SQ8L_API void sq8l_doc_load(void* d, const uint8_t* obj, uint32_t base) {
     Doc& o = doc(d);
     globalFields([](const uint8_t* b, uint32_t off, auto& v) { get(b, off, v); }, o, obj);
-    for (uint32_t v = 0; v < Doc::kMaxVoices; v++) {
+    for (uint32_t v = 0; v < uint32_t(sq8l::kOriginalVoiceSlots); v++) {  // the original's layout
         std::memcpy(&o.voice[v], obj + kVoiceBase + v * kVoiceSize, kVoiceSize);
         std::memcpy(&o.param[v], obj + kParamBase + v * kParamSize, kParamSize);
         uint32_t ptr;
@@ -109,7 +109,7 @@ SQ8L_API void sq8l_doc_load(void* d, const uint8_t* obj, uint32_t base) {
 SQ8L_API void sq8l_doc_save(void* d, uint8_t* obj, uint32_t base) {
     Doc& o = doc(d);
     globalFields([](uint8_t* b, uint32_t off, auto& v) { put(b, off, v); }, o, obj);
-    for (uint32_t v = 0; v < Doc::kMaxVoices; v++) {
+    for (uint32_t v = 0; v < uint32_t(sq8l::kOriginalVoiceSlots); v++) {  // the original's layout
         std::memcpy(obj + kVoiceBase + v * kVoiceSize, &o.voice[v], kVoiceSize);
         std::memcpy(obj + kParamBase + v * kParamSize, &o.param[v], kParamSize);
         put(obj, kParamBase + v * kParamSize + kLinkedOffset, pointerFromSlot(o.param[v].linkedSlot, base));

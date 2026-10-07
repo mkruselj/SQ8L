@@ -54,8 +54,9 @@ public:
     // behaves exactly like the original (the differential GUI tests rely on it): no extra
     // OPTIONS items, no left click on the program number.
     virtual bool portExtensions() { return true; }
-    // Change a [port] setting (Settings::port); the host notifies the editor (wParam 0,
-    // lParam 0x20 + index) when the value changed.
+    // Change a [port] setting (Settings::port: 0 confirmLoad, 1 polyphony, which the host
+    // also applies to the synth); the host notifies the editor (wParam 0, lParam
+    // 0x20 + index) when the value changed.
     virtual void setPortSetting(int index, int value) { (void)index; (void)value; }
 };
 

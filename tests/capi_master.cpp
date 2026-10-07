@@ -55,14 +55,16 @@ struct Forwarder final : VoiceModules {
     Callback cb = nullptr;
     bool muted = true;
     Programs* programs = nullptr;
-    LfoParams lfo[16][4] = {};
-    MasterDocParams doc[16] = {};
+    LfoParams lfo[Master::kMaxVoices][4] = {};
+    MasterDocParams doc[Master::kMaxVoices] = {};
 
     double io[16] = {};
     double call(int32_t m, int32_t v, int32_t i, std::initializer_list<double> args) {
         int k = 0;
         for (double a : args) io[k++] = a;
-        if (!muted && cb) cb(m, v, i, io);
+        // The original's modules have 16 voice slots: the port's extra slots (more polyphony)
+        // only get set-up calls (sample/control rate), which stay local.
+        if (!muted && cb && v < kOriginalVoiceSlots) cb(m, v, i, io);
         return io[0];
     }
     int32_t icall(int32_t m, int32_t v, int32_t i, std::initializer_list<double> args) {

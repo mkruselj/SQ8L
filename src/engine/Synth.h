@@ -76,10 +76,10 @@ public:
     int32_t follTick(int v) override { return foll[v].tick(); }
 
     Doc doc;
-    Lfo lfo[16][4];
-    Env env[16][4];
-    Amp amp[16];
-    ModFollower foll[16];
+    Lfo lfo[kMaxVoiceSlots][4];
+    Env env[kMaxVoiceSlots][4];
+    Amp amp[kMaxVoiceSlots];
+    ModFollower foll[kMaxVoiceSlots];
 };
 
 class Synth {
@@ -104,6 +104,10 @@ public:
     int32_t setChunk(const uint8_t* data, size_t size);   // effSetChunk (CSynth_v019): 0 ok, -1 error
 
     Master& master() { return *master_; }
+    // (port) OPTIONS -> Polyphony: playable voices, 8 (the original) to 32, plus the 8 fade
+    // slots. Changing it resets the synth like the original's voice set-up (notes stop).
+    void setPolyphony(int voices);
+    int polyphony() const { return master_->playableVoices(); }
     EditBuffer& editBuffer() { return *edit_; }
     SoundLibrary& library() { return *library_; }
     SynthModules& modules() { return *modules_; }

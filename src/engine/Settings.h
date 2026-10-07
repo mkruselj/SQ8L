@@ -15,6 +15,7 @@
 #include <string_view>
 
 #include "Program.h"
+#include "VoiceSlots.h"
 
 namespace sq8l {
 
@@ -34,12 +35,18 @@ struct Settings {
     int synth[kNumSynth] = {2, 0, 0, 0, 0};
 
     // [port]: options added by the port (not in the original, which ignores the section).
-    static constexpr int kNumPort = 1;
-    static constexpr const char* kPortKeys[kNumPort] = {"confirmLoad"};
-    static constexpr int kPortDefaults[kNumPort] = {1};
-    int port[kNumPort] = {1};
+    static constexpr int kNumPort = 2;
+    static constexpr const char* kPortKeys[kNumPort] = {"confirmLoad", "polyphony"};
+    static constexpr int kPortDefaults[kNumPort] = {1, kOriginalPlayableVoices};
+    int port[kNumPort] = {1, kOriginalPlayableVoices};
     // Ask before loading a library, a bank or a SysEx bank over existing programs.
     bool confirmLoading() const { return port[0] > 0; }
+    // Playable voices (OPTIONS -> Polyphony), 8 like the original up to 32.
+    int polyphony() const {
+        return port[1] < kOriginalPlayableVoices ? kOriginalPlayableVoices
+               : port[1] > kMaxPlayableVoices    ? kMaxPlayableVoices
+                                                 : port[1];
+    }
 
     // [gui] (only the editor uses these). getGuiBool = value > 0.
     bool restoreMouseAfterMenu() const { return gui[0] > 0; }

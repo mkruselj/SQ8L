@@ -4,7 +4,8 @@ The differential GUI tests (test_gui_logic.py) run with the additions off and mu
 matching the original; this checks the additions themselves:
   * OPTIONS "Down arrow -> next program": the original's hidden swapProgUpDn ini key;
   * OPTIONS "Ask before loading banks/libraries" ([port] confirmLoad): no prompt when off;
-  * a left click on the program number opens the program list (the original: right only).
+  * a left click on the program number opens the program list (the original: right only);
+  * OPTIONS "Polyphony..." ([port] polyphony): 8 (the original) to 32 voices.
 
 Self-contained (no original files needed):
   SQ8L_TESTAPI=$PWD/build/libsq8l_testapi.dylib python3 tests/test_gui_extensions.py
@@ -23,8 +24,8 @@ MK_LBUTTON, MK_RBUTTON = 1, 2
 NUM_LCD = (40, 52)
 UP, DOWN = (296, 48), (296, 67)
 OPTIONS, FILE = (105, 12), (37, 12)
-# OPTIONS items: 0 voice stealing, 1 emulation, 2 line, 3 mouse restore, 4 rmb scroll, 5 line, 6, 7
-OPT_SWAP, OPT_CONFIRM = 6, 7
+# OPTIONS items: 0 voice stealing, 1 emulation, 2 line, 3 mouse restore, 4 rmb scroll, 5 line, 6-8
+OPT_POLY, OPT_SWAP, OPT_CONFIRM = 6, 7, 8
 # FILE items: 0 load library, 1 save library, 2 init library, 3 line, 4 load bank, 5 save bank
 FILE_LOAD_LIB, FILE_SAVE_LIB, FILE_LOAD_BANK, FILE_SAVE_BANK = 0, 1, 4, 5
 
@@ -131,7 +132,13 @@ def main():
     print("With the additions:")
     ed = Editor(L, extensions=True)
     opts = ed.menu(OPTIONS)
-    check(len(opts) == 8 and opts[5]["separator"], f"OPTIONS has 3 more items ({len(opts)})")
+    check(len(opts) == 9 and opts[5]["separator"], f"OPTIONS has 4 more items ({len(opts)})")
+    poly = opts[OPT_POLY]
+    check(text(poly) == "Polyphony..." and [text(i) for i in poly.get("sub", [])] ==
+          ["8 voices   (SQ80)", "12 voices", "16 voices", "24 voices", "32 voices"],
+          f"'{text(poly)}' with 8/12/16/24/32 voices")
+    check([i["checked"] for i in poly["sub"]] == [True, False, False, False, False] and
+          all(i.get("radio") for i in poly["sub"]), "radio items, 8 voices checked by default")
     check(text(opts[OPT_SWAP]) == "Down arrow -> next program" and not opts[OPT_SWAP]["checked"],
           f"'{text(opts[OPT_SWAP])}' unchecked by default")
     check(text(opts[OPT_CONFIRM]) == "Ask before loading banks/libraries" and opts[OPT_CONFIRM]["checked"],
@@ -188,6 +195,15 @@ def main():
     ed.click(OPTIONS)
     ed.events()
     check(L.sq8l_gl_port_setting(ed.v, 0) == 1, "asking again")
+
+    # 4. polyphony
+    for k, n in ((2, 16), (4, 32), (0, 8)):
+        ed.choose([OPT_POLY, k])
+        ed.click(OPTIONS)
+        ed.events()
+        sub = ed.menu(OPTIONS)[OPT_POLY]["sub"]
+        check(L.sq8l_gl_port_setting(ed.v, 1) == n and [i["checked"] for i in sub] == [j == k for j in range(5)],
+              f"polyphony {n}: [port] polyphony={L.sq8l_gl_port_setting(ed.v, 1)}, menu checked")
 
     print(f"{'FAILED' if failures else 'OK'}: {len(failures)} failure(s)")
     return 1 if failures else 0

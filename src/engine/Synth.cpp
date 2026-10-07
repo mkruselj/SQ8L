@@ -18,11 +18,11 @@ static_assert(sizeof(MasterDocParams) == sizeof(DocVoiceParams), "Doc params lay
 static_assert(offsetof(Lfo, smoothIn) - offsetof(Lfo, freqIn) == 0x34, "Lfo input block layout");
 static_assert(sizeof(LfoParams) == 0x38, "LfoParams layout");
 
-SynthModules::SynthModules() : doc(16) {
+SynthModules::SynthModules() : doc(kOriginalVoiceSlots, kMaxVoiceSlots) {
     RoundToNearest rn;
     // Master constructor order: Cdoc, then per voice the follower, 4 LFOs (with the
     // ROM wave callback), 4 envelopes, (filters,) the amp.
-    for (int v = 0; v < 16; v++) {
+    for (int v = 0; v < kMaxVoiceSlots; v++) {
         foll[v].init(kControlRate);
         for (int i = 0; i < 4; i++) {
             lfo[v][i].construct(kControlRate);
@@ -55,6 +55,8 @@ Synth::Synth(float sampleRate, SoundLibrary* library, const Settings* settings, 
         RoundToNearest rn;
         // CSynth ctor: master created with Round(sampleRate) of the AudioEffect (44100 default).
         master_ = std::make_unique<Master>(*modules_, fistp(sampleRate), settings_.synth, notify);
+        // (port) OPTIONS -> Polyphony; the original's 8 + 8 are set by the constructor.
+        if (settings_.polyphony() != kOriginalPlayableVoices) master_->setVoices(settings_.polyphony(), kFadeVoices);
     }
     edit_->listener = [this](EditBuffer::Event e, const Program* slot) {
         syncProgram();
@@ -112,6 +114,14 @@ int32_t Synth::setChunk(const uint8_t* data, size_t size) {
         return 0;
     }
     return -1;
+}
+
+void Synth::setPolyphony(int voices) {
+    if (voices < kOriginalPlayableVoices) voices = kOriginalPlayableVoices;
+    if (voices > kMaxPlayableVoices) voices = kMaxPlayableVoices;
+    if (voices == master_->playableVoices()) return;
+    RoundToNearest rn;
+    master_->setVoices(voices, kFadeVoices);
 }
 
 }  // namespace sq8l

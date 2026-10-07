@@ -82,13 +82,14 @@ public:
 
     void setPortSetting(int index, int value) override {
         if (!p_.settings().setPort(index, value)) return;
+        if (index == 1) p_.synth().setPolyphony(p_.settings().polyphony());  // (engine lock held)
         sq8l::SharedLibrary::saveSettings();
         if (controller_) controller_->post(sq8l::gui::kMsgNotify, 0, 0x20 + index);
     }
 
     void panic() override { p_.synth().master().panic(); }
     int voicesUsed() override { return p_.synth().master().activeVoiceCount(); }
-    int voicesMax() override { return 8; }
+    int voicesMax() override { return p_.synth().polyphony(); }
 
     std::string pluginDirectory() override {
         std::string d = sq8l::userDataDir();

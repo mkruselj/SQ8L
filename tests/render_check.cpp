@@ -6,6 +6,12 @@
 //       Self-contained: does not need the original DLL.
 //   sq8l_render_check tests/golden_raw
 //       Compares with full golden renders (tests/export_golden_raw.py, needs the original).
+//   sq8l_render_check --polyphony tests/regression
+//       More voices (OPTIONS -> Polyphony, a port addition): every regression case renders
+//       identically with 12/16/24/32 voices when it never takes over a sounding voice with the
+//       original's 8; then a stress test (40 held notes, 32 voices) on programs of every bank.
+#include <algorithm>
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -25,7 +31,9 @@ std::vector<uint8_t> readAll(const std::string& path) {
 }
 
 // Renders a case (golden_raw / regression format); returns L then R, p = end of MIDI data.
-void render(const std::vector<uint8_t>& buf, size_t& p, std::vector<float>& L, std::vector<float>& R) {
+// `voices`: playable voices (8 = the original); `steals`: notes that took a sounding voice.
+void render(const std::vector<uint8_t>& buf, size_t& p, std::vector<float>& L, std::vector<float>& R,
+            int voices = 8, uint32_t* steals = nullptr, bool menu = false) {
     auto rd = [&](void* dst, size_t k) {
         std::memcpy(dst, buf.data() + p, k);
         p += k;
@@ -33,8 +41,11 @@ void render(const std::vector<uint8_t>& buf, size_t& p, std::vector<float>& L, s
     int32_t prog, nblocks;
     rd(&prog, 4);
     rd(&nblocks, 4);
-    sq8l::Synth synth(44100.0f);
+    sq8l::Settings settings;
+    settings.port[1] = menu ? 8 : voices;  // menu: set later, like OPTIONS -> Polyphony
+    sq8l::Synth synth(44100.0f, nullptr, &settings);
     synth.setSampleRate(44100.0f);
+    if (menu) synth.setPolyphony(voices);
     synth.setProgram(prog);
     for (int b = 0; b < nblocks; b++) {
         int32_t frames, nev;
@@ -53,6 +64,7 @@ void render(const std::vector<uint8_t>& buf, size_t& p, std::vector<float>& L, s
         L.insert(L.end(), l.begin(), l.end());
         R.insert(R.end(), r.begin(), r.end());
     }
+    if (steals) *steals = synth.master().stealCount();
 }
 
 uint64_t fnv1a64(const void* data, size_t n, uint64_t h = 0xCBF29CE484222325ull) {
@@ -130,9 +142,113 @@ int golden(const std::string& dir) {
     return bad ? 1 : 0;
 }
 
+uint64_t hashLR(const std::vector<float>& L, const std::vector<float>& R) {
+    return fnv1a64(R.data(), R.size() * 4, fnv1a64(L.data(), L.size() * 4));
+}
+
+bool finite(const std::vector<float>& v) {
+    for (float x : v)
+        if (!std::isfinite(x)) return false;
+    return true;
+}
+
+int polyphony(const std::string& dir) {
+    std::ifstream exp(dir + "/expected.txt");
+    if (!exp) {
+        std::fprintf(stderr, "no %s/expected.txt\n", dir.c_str());
+        return 2;
+    }
+    const int counts[] = {12, 16, 24, 32};
+    int cases = 0, free = 0, bad = 0, stealing = 0;
+    std::string line;
+    while (std::getline(exp, line)) {
+        if (line.empty() || line[0] == '#') continue;
+        std::istringstream is(line);
+        std::string name;
+        is >> name;
+        const std::vector<uint8_t> buf = readAll(dir + "/cases/" + name);
+        size_t p = 0;
+        std::vector<float> L8, R8;
+        uint32_t steals = 0;
+        render(buf, p, L8, R8, 8, &steals);
+        const uint64_t h8 = hashLR(L8, R8);
+        cases++;
+        if (steals) stealing++;
+        else free++;
+        for (int n : counts) {
+            p = 0;
+            std::vector<float> L, R;
+            render(buf, p, L, R, n);
+            if (!finite(L) || !finite(R) || L.size() != L8.size()) {
+                bad++;
+                std::printf("BAD %s with %d voices: non-finite output or wrong length\n", name.c_str(), n);
+            } else if (!steals && hashLR(L, R) != h8) {
+                bad++;
+                std::printf("DIFF %s with %d voices (no voice taken over with 8)\n", name.c_str(), n);
+            }
+            if (n == 16) {  // set from the menu after loading = set at load (saved setting)
+                p = 0;
+                std::vector<float> Lm, Rm;
+                render(buf, p, Lm, Rm, n, nullptr, true);
+                if (hashLR(Lm, Rm) != hashLR(L, R)) {
+                    bad++;
+                    std::printf("DIFF %s: 16 voices from the menu vs at load\n", name.c_str());
+                }
+            }
+        }
+    }
+    std::printf("polyphony: %d cases; %d never take over a voice with 8 and render identically with "
+                "12/16/24/32 voices (%s), %d do (more voices change them, output finite); "
+                "set from the menu = set at load\n",
+                cases, free, bad ? "FAILED" : "ok", stealing);
+
+    // Stress: 40 held notes with 32 voices, programs from every bank, then the releases
+    // (and the same with the original's 8 voices, for the level).
+    int maxActive = 0, programs = 0, stressBad = 0;
+    float peak = 0, peak8 = 0;
+    for (int run = 0; run < 2; run++)
+    for (int prog = 0; prog < 512; prog += 23) {
+        sq8l::Settings settings;
+        settings.port[1] = run ? 8 : 32;
+        sq8l::Synth synth(44100.0f, nullptr, &settings);
+        synth.setSampleRate(44100.0f);
+        synth.setProgram(prog);
+        std::vector<float> l(512), r(512);
+        std::vector<float> all;
+        for (int phase = 0; phase < 2; phase++) {
+            std::vector<sq8l::RawMidiEvent> ev(40);
+            for (int k = 0; k < 40; k++) {
+                ev[size_t(k)].deltaFrames = k * 3;
+                ev[size_t(k)].data[0] = phase ? 0x80 : 0x90;
+                ev[size_t(k)].data[1] = uint8_t(28 + k);
+                ev[size_t(k)].data[2] = phase ? 0 : 100;
+                ev[size_t(k)].noteOffVelocity = 0;
+            }
+            synth.processEvents(ev.data(), 40);
+            for (int b = 0; b < 172; b++) {  // 2 s
+                synth.process(l.data(), r.data(), 512, true);
+                if (phase == 0 && !run) maxActive = std::max(maxActive, int(synth.master().activeVoiceCount()));
+                all.insert(all.end(), l.begin(), l.end());
+                all.insert(all.end(), r.begin(), r.end());
+            }
+        }
+        if (!run) programs++;
+        if (!finite(all)) {
+            stressBad++;
+            std::printf("BAD stress program %d: non-finite output\n", prog);
+        }
+        for (float x : all) (run ? peak8 : peak) = std::max(run ? peak8 : peak, std::fabs(x));
+    }
+    std::printf("stress: %d programs, 40 held notes: up to %d voices sounding with 32, output finite; "
+                "peak %.2f (with 8 voices: %.2f), %s\n",
+                programs, maxActive, double(peak), double(peak8), stressBad || maxActive != 32 ? "FAILED" : "ok");
+    return bad || stressBad || maxActive != 32 ? 1 : 0;
+}
+
 }  // namespace
 
 int main(int argc, char** argv) {
     if (argc > 2 && std::string(argv[1]) == "--regression") return regression(argv[2]);
+    if (argc > 2 && std::string(argv[1]) == "--polyphony") return polyphony(argv[2]);
     return golden(argc > 1 ? argv[1] : "tests/golden_raw");
 }
