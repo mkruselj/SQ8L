@@ -37,9 +37,15 @@ code and verified against the original plugin running inside an x86 emulator.
 - Popup menus, message boxes, file pickers and the WRITE / MIDI-port dialogs use the
   operating system's native controls: on macOS they look like macOS.
 - A few small additions to the editor: a left click on the program number opens the program
-  list (the original needs a right or double click), and two items at the bottom of OPTIONS:
-  *Down arrow -> next program* (the original's hidden `swapProgUpDn` setting) and
-  *Ask before loading banks/libraries* (on by default, like the original).
+  list (the original needs a right or double click), and three items at the bottom of
+  OPTIONS: *Polyphony* (see below), *Down arrow -> next program* (the original's hidden
+  `swapProgUpDn` setting) and *Ask before loading banks/libraries* (on by default, like the
+  original).
+- **Polyphony:** 8 voices like the SQ-80 by default, up to 32 with OPTIONS → *Polyphony*.
+  With 8 the sound is bit-exact; with more, a performance changes only where the original
+  would have stolen a voice. The output is not rescaled, so many voices sounding together
+  are louder: lower the volume if needed. The setting is global (saved in `SQ8L.ini`) and
+  changing it stops the notes that are playing.
 - Text (status bar, program name) uses Liberation Sans, a free font metrically compatible
   with Arial, with anti-aliasing.
 - SEND/REQ to a hardware SQ-80/ESQ-1 over MIDI ports are not connected yet (SysEx import and
