@@ -1,8 +1,8 @@
 # SQ8L — 64-bit port
 
 A faithful 64-bit port of **SQ8L 0.91b**, the free Ensoniq SQ-80 emulation by
-**Siegfried Kullmann** (2006–2008), for modern macOS (Apple Silicon and Intel) and
-Windows x64, as **VST2, VST3, Audio Unit and CLAP**.
+**Siegfried Kullmann** (2006–2008), for modern macOS (Apple Silicon and Intel), Windows x64
+and Linux (x86-64 and ARM64), as **VST2, VST3, Audio Unit (macOS), CLAP and LV2 (Linux)**.
 
 SQ8L was a 32-bit Windows-only VST written in Delphi. Its source code was never released,
 and the plugin could no longer run in today's 64-bit hosts. This project rebuilds it from the
@@ -35,7 +35,8 @@ code and verified against the original plugin running inside an x86 emulator.
 ### Differences from the original
 
 - Popup menus, message boxes, file pickers and the WRITE / MIDI-port dialogs use the
-  operating system's native controls: on macOS they look like macOS.
+  operating system's native controls: on macOS they look like macOS. On Linux they are drawn
+  inside the plug-in window (the file picker is the desktop's, or a simple built-in one).
 - A few small additions to the editor: a left click on the program number opens the program
   list (the original needs a right or double click), and three items at the bottom of
   OPTIONS: *Polyphony* (see below), *Down arrow -> next program* (the original's hidden
@@ -76,8 +77,13 @@ xattr -dr com.apple.quarantine ~/Library/Audio/Plug-Ins/Components/SQ8L.componen
 `C:\Program Files\Common Files\CLAP`. If the old 32-bit `SQ8L.dll` is in the same folder,
 keep a copy of it first: the files have the same name.
 
+**Linux** (x86-64 or ARM64, X11 or XWayland): unpack `SQ8L-Linux-x64.tar.gz` (or `-arm64`)
+and copy `SQ8L.so` (VST2) to `~/.vst`, `SQ8L.vst3` to `~/.vst3`, `SQ8L.clap` to `~/.clap`
+and `SQ8L.lv2` to `~/.lv2`. Banks A and B and the options are kept in `~/.config/SQ8L`.
+
 The user library (banks A and B) and the options are stored in
-`~/Library/Application Support/SQ8L` (macOS) or `%APPDATA%\SQ8L` (Windows) as
+`~/Library/Application Support/SQ8L` (macOS), `%APPDATA%\SQ8L` (Windows) or `~/.config/SQ8L`
+(Linux) as
 `SQ8L_backup.dat` and `SQ8L.ini`, the same files the original kept in its folder. To use an
 existing library, copy your old `SQ8L_backup.dat` there (or load it with *FILE → Load
 library*).
@@ -95,6 +101,8 @@ cmake --build build
 ```
 
 - macOS universal: add `-DCMAKE_OSX_ARCHITECTURES="arm64;x86_64" -DCMAKE_OSX_DEPLOYMENT_TARGET=10.15`.
+- Linux: install the X11 and OpenGL development packages first (Debian/Ubuntu:
+  `libx11-dev libxext-dev libxcursor-dev libxrandr-dev libgl-dev libdbus-1-dev`).
 - Windows x64 from macOS/Linux with MinGW-w64:
   `-DCMAKE_TOOLCHAIN_FILE=cmake/mingw-w64-x86_64.cmake` (Linux: use the `-posix` compilers).
 - Plug-ins are written to `build/bin/`.
