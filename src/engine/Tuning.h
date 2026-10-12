@@ -10,8 +10,8 @@
 namespace sq8l {
 
 struct Tuning {
-    bool enabled = false;               // [port] mtsEsp
-    bool correctNativeOffsets = false;  // [port] mtsCorrectPitch: absolute instead of relative
+    bool enabled = false;               // (port) mtsEsp
+    bool correctNativeOffsets = false;  // (port) mtsCorrectPitch: corrects SQ-80's per key tuning offsets
     bool connected = false;             // a master is present
     // MTS_RetuningAsRatio: the master's deviation from 12-ET per key, 1.0 = no change.
     // Both modes work from it; absolute mode additionally divides out the pitch table's own

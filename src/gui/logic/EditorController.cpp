@@ -1068,9 +1068,7 @@ void EditorController::zoomClick(MenuNode& item) {
     host_.setZoom(item.tag);
 }
 
-// Port addition: ask before loading a library, a bank or a SysEx bank ([port] confirmLoad).
-// Port addition: follow an MTS-ESP master ([port] mtsEsp). The parent entry mirrors the
-// checkmark so the state is visible without opening the submenu.
+// Port addition: follow an MTS-ESP master.
 void EditorController::mtsEnableClick(MenuNode& item) {
     item.setChecked(!item.checked);
     if (menuMts_) menuMts_->setChecked(item.checked);
@@ -1078,12 +1076,13 @@ void EditorController::mtsEnableClick(MenuNode& item) {
 }
 
 // Port addition: correct the SQ-80's own per-key pitch offsets to the master's frequencies
-// (absolute tuning) instead of applying only its deviation from 12-ET ([port] mtsCorrectPitch).
+// (absolute tuning) instead of applying only its deviation from 12-ET.
 void EditorController::mtsCorrectPitchClick(MenuNode& item) {
     item.setChecked(!item.checked);
     host_.setMtsCorrectPitch(item.checked);
 }
 
+// Port addition: ask before loading a library, a bank or a SysEx bank ([port] confirmLoad).
 void EditorController::confirmLoadClick(MenuNode& item) {
     item.setChecked(!item.checked);
     host_.setPortSetting(0, item.checked ? 1 : 0);

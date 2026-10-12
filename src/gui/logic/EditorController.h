@@ -125,8 +125,8 @@ private:
     void wireControls();
     // message handlers
     void onTimer();                           // FUN_00483628
-    void updateVoices();
-    void updateMtsScale();  // port addition                      // 0x483804
+    void updateVoices();                      // 0x483804
+    void updateMtsScale();                    // port addition
     void onNotify(uint32_t wParam, int32_t lParam);  // FUN_0048365c
     void settingsChanged();                   // FUN_00483b08
     void refreshAll();                        // FUN_004842d8
